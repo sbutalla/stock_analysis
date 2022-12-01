@@ -101,14 +101,14 @@ class stock_data:
             ax[0].set_title(self.ticker) # set title for candlestick chart only
             for subplot in range(len(ax)): # set grid, x, and y labels for both plots
                 ax[subplot].grid()
-                ax[subplot].set_xlabel("Date")
-                ax[subplot].set_ylabel(y_labels[subplot])            
+                ax[subplot].set_xlabel("Date", loc = 'right')
+                ax[subplot].set_ylabel(y_labels[subplot], loc = 'top')            
         else: # plot only the candlestick chart
             fig, ax = plt.subplots(figsize = (20, 16))
             ax.grid()
             ax.set_title(self.ticker)
-            ax.set_xlabel("Date")
-            ax.set_ylabel("Price (USD)")
+            ax.set_xlabel("Date", loc = 'right')
+            ax.set_ylabel("Price (USD)", loc = 'top')
 
         for point in np.arange(self.high.shape[0]): # loop over each observation
             if self.close_p[point] > self.open_p[point]: # increasing candle
@@ -131,7 +131,7 @@ class stock_data:
         fig.tight_layout()
         plt.show()
 
-        if save_fig: # and path is not None:
+        if save_fig:
             if volume:
                 plot_name = '%s_candlestick_volume.pdf' % self.ticker
             else:
