@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from pprint import pprint
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
@@ -46,7 +47,15 @@ class stock_data:
     plot_candle:   Plots a candlestick chart and the associated volume plot.
     '''
     
-    def __init__(self, ticker): #per, freq):
+    def __init__(self, ticker):
+        '''
+        Constructor for the stock_data class. Retrieves stock data and initializes 
+        several variables that are used for analysis/plotting.
+
+        Arguments:
+            Positional:
+                ticker: (str) Ticker symbol.
+        '''
         ## check input
         if len(ticker) > 5:
             print("Error: Stock ticker symbol cannot be more than 5 characters in length!")
@@ -55,20 +64,21 @@ class stock_data:
             
         self.ticker = ticker
         
-        self.data    = yf.Ticker(self.ticker)
-        self.history = self.data.history(period = "max") #, period = per, interval = freq)
-        self.low     = self.history["Low"].to_numpy()
-        self.high    = self.history["High"].to_numpy()
-        self.open_p  = self.history["Open"].to_numpy()
-        self.close_p = self.history["Close"].to_numpy()
-        self.volume  = self.history["Volume"].to_numpy()
-        self.dates   = self.history.index.to_pydatetime()
+        self.data    = yf.Ticker(self.ticker)             # store object created from yf.Ticker() method as attr
+        self.history = self.data.history(period = "max")  # store pd.DataFrame of max. stock data history as attr
+        self.low     = self.history["Low"].to_numpy()     # store np.array of lowest daily stock price as attr
+        self.high    = self.history["High"].to_numpy()    # store np.array of highest daily stock price as attr
+        self.open_p  = self.history["Open"].to_numpy()    # store np.array of daily opening stock price as attr
+        self.close_p = self.history["Close"].to_numpy()   # store np.array of daily closing stock price as attr
+        self.volume  = self.history["Volume"].to_numpy()  # store np.array of daily stock trading volume as attr
+        self.dates   = self.history.index.to_pydatetime() # store dataframe indices (dates) in pydatetime format as attr
         
     # define the activation function
     def print_summary(self):
         '''
         Uses pretty print to print the stock information.
-        Inputs: None
+
+        Arguments: None
         '''
         pprint(self.data.info)
     
@@ -76,7 +86,8 @@ class stock_data:
         '''
         Uses pretty print to print the information on the
         news articles that feature the stock.
-        Inputs: None
+
+        Arguments: None
         '''
         pprint(self.data.news)
         
@@ -84,6 +95,7 @@ class stock_data:
     def plot_candle(self, plot_volume = True, save_fig = False, path = None):
         '''
         Plots a candlestick chart and the associated volume plot.
+
         Arguments:
             Positional: None
             Default:
