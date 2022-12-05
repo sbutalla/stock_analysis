@@ -2,20 +2,19 @@ import numpy as np
 import pandas as pd
 from pprint import pprint
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from matplotlib.patches import Rectangle
-import matplotlib
+import matplotlib.mc as mc
 import yfinance as yf
 
 
-matplotlib.rcParams.update({'font.size': 28})
-
-
+matplotlib.rcParams.update({'font.size': 28}) # increase fontsize for matplotlib
 
 def format_path(path, verbose = False):
     '''
     Formats a path by removing trailing '/'
     and creates directory if it does not existsto avoid errors
+    Arguments:
+        Positional:
+            path:   (str) 
     '''
     if path == '':
         pass
@@ -45,6 +44,8 @@ class stock_data:
     print_news:    Uses pretty print to print the information on the news articles
                    that feature the stock.    
     plot_candle:   Plots a candlestick chart and the associated volume plot.
+    plot_close:    Creates a line plot and (optionally) overlays simple
+                   moving average curves.
     '''
     
     def __init__(self, ticker):
@@ -58,9 +59,11 @@ class stock_data:
         '''
         ## check input
         if len(ticker) > 5:
-            print("Error: Stock ticker symbol cannot be more than 5 characters in length!")
-            print("  --> NYSE tickers can have a max of 4 letters")
-            print("  --> NYSE tickers can have a max of 5 letters")
+            nyse_err   = "  --> NYSE tickers can have a max of 4 letters"
+            nasdaq_err = "  --> Nasdaq tickers can have a max of 5 letters"
+
+            raise ValueError("Error: Stock ticker symbol length requirements:\n%s\n%s" % (nyse_err, nasdaq_err))
+
             
         self.ticker = ticker
         
@@ -148,9 +151,73 @@ class stock_data:
                 plot_name = '%s_candlestick_volume.pdf' % self.ticker
             else:
                 plot_name = '%s_candlestick.pdf' % self.ticker
+
             if path is not None:
                 path = format_path(path)
             else:
                 path = ''
             fig.savefig(path + plot_name)
-    
+
+
+    def plot_close(self, sma = False, window = None, save_fig = False, path = None):
+        '''
+        Plots a candlestick chart and the associated volume plot.
+        Arguments:
+            Positional: None
+              Default:
+                  sma:       (bool) Adds a plot of the SMA(s) provided in the 'window'
+                             default argument.
+                  window:    (int, list) The window size(s) for the SMA(s). Can be passed
+                             as either an int or a list of ints.
+                  save_fig:  (bool) Saves the plot.
+                  path:      (str) The absolute or relative path to save the
+                             file at.       
+        '''
+        ## check inputs
+        if sma:
+            if window is None: 
+                raise ValueError("Window must be specified as an int or list of ints for SMA calculation")
+            elif type(window) not in [int, list]:
+                raise TypeError("Window must be types int or list for SMA calculation")aise ValueError("Window must be specified as an int or list of ints for SMA calculation")
+
+        if type(window) is list:
+            window      = [int(win_size) for win_size in window]   # make sure all window sizes are ints
+            col_palette = cm.hsv(np.linspace(0, 0.6, len(window))) # initialize color palette with the hue, saturation,
+                                                                   # value (hsv) colormap
+        else:
+            window      = [int(window)] # make a size one list
+            col_palette = ['crimson']   # initialize default color for a single SMA 
+
+        fig, ax = plt.subplots(figsize = (18, 10))
+        ax.grid()
+        ax.set_title(self.ticker)
+        ax.set_xlabel("Date", loc = 'right')
+        ax.set_ylabel("Price (USD)", loc = 'top')
+        ax.plot(self.dates, self.close_p, color = "k", label = "Close price") # plot close price as a black line
+
+        if sma:
+            for win, color in zip(window, col_palette):     # loop over each window and color in color palette
+                sma_vals, sma_dates = self.calc_sma_np(win) # use the numpy method to calculate the SMA
+                ax.plot(sma_dates, sma_vals, color = color, label = "SMA (%i day)" % win)
+
+        ax.legend()
+        fig.tight_layout()
+        plt.show()
+
+        if save_fig:
+            if sma:
+                plot_name = "%s_close_price_sma_" % self.ticker
+                for win, cnt in zip(window, np.arange(len(window))):
+                    if cnt < (len(window) - 1):
+                        plot_name += "%d_" % win
+                    else:
+                        plot_name += "%d.pdf" % win
+            else:
+                plot_name = "%s_close_price.pdf" % self.ticker
+
+            if path is not None:
+                path = format_path(path)
+            else:
+                path = ''
+
+            fig.savefig(path + plot_name)    
