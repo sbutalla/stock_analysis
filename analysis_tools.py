@@ -32,7 +32,7 @@ def format_path(path, verbose = False):
             pass
     return path
 
-class stock_data:
+class stockData:
     '''
     Class for retrieving, processing, and analyzing stock data.
     Methods:
@@ -93,15 +93,108 @@ class stock_data:
         Arguments: None
         '''
         pprint(self.data.news)
+
+    def calc_sma_np(self, window):
+        '''
+        Calculate the simple moving average.
+        Arguments:
+          Positional:
+            window:   (int; float) The window (of a time period)
+                      of the moving average.
+        '''
+        # array to store sma values        
+        sma_vals = np.ndarray((self.close_p.shape[0] + 1 - window,))
+
+        # loop over window
+        for ii in range(sma_vals.shape[0]): 
+            sma_vals[ii] = np.sum(self.close_p[ii: ii + window]) / window 
+    
+        sma_dates = self.dates[window - 1:]
+        
+        return sma_vals, sma_dates
+
+    def calc_ema_np(self, window=None, cm=None, hl=None, theta=None, weighted=False):
+        '''
+        Calculates the exponential moving average using
+        numpy.
+        Arguments:
+            Keyword:
+                window:  (int; float) The window size, w (span).
+                cm:      (int; float) The center-of-mass, cm.
+                hl:      (int; float) The half-life, t_{1/2}.
+                theta:   (int; float) The scaling parameter.
+                weighted: (bool) Calculate exponentially weighted moving average.
+        '''
+        params = [window, cm, hl, theta]
+        
+        if params.count(None) <= 1 or params.count(None) == 4:
+            raise ValueError('Only one variable in [window, cm, hl] can be chosen')
+        
+        if window:
+            sp_val   = window
+            var_type = 'win'
+        if cm:
+            sp_val   = cm
+            var_type = 'cm'
+        if hl:
+            sp_val   = hl
+            var_type = 'halflife'
+        if theta:
+            if theta > 1 or theta < 0:
+                raise ValueError('The value of the smoothing parameter (theta) cannot be theta < 0 or 1 < theta')
+            else:
+                sp_val   = theta
+                var_type = 'theta'
+
+        sm_param     = self.smoothing_param(sp_val, var_type) 
+        red_sm_param = 1 - sm_param
+        num_obs      = self.close_p.shape[0]
+
+        ema_vals    = np.ndarray((num_obs,)) 
+        ema_vals[0] = self.close_p[0] # initialize first price of EMA array as p0
+
+        for obs in np.arange(1, num_obs):
+            if weighted:
+                numer = 0
+                denom = 0
+                for weight in np.arange(obs): # loop over number of time periods up to the current observation
+                    numer += (red_sm_param**weight) * self.close_p[obs - weight]
+                    denom += (red_sm_param**weight)
+
+                ema_vals[obs] = numer / denom
+            else:
+                ema_vals[obs] = (sm_param * self.close_p[obs]) + (red_sm_param * ema_vals[obs - 1])
+
+        return ema_vals
+
+    def calc_boll_np(self, window):
+        '''
+        Calculates Bollinger Bands using the numpy method.
+        Arguments:
+            Positional: 
+                window:   (int) The window size of the SMA
+                          used to calculate the Bollinger
+                          Bands.
+        '''
+        if window not in [10, 20, 50]:
+            raise ValueError("Only window sizes of 10, 20, or 50 days currently supported.")
+ 
+        window_to_stddev = {10: 1.5, 20: 2, 50: 2.5}
+        band_size        = window_to_stddev[window]
+        
+        sma_vals, sma_stddev, sma_dates = self.calc_sma_np(window, stddev=True)
+        upper_band = sma_vals + (band_size * sma_stddev)
+        lower_band = sma_vals - (band_size * sma_stddev)
+        
+        return sma_vals, upper_band, lower_band, sma_dates
         
         
-    def plot_candle(self, plot_volume = True, save_fig = False, path = None):
+    def plot_candle(self, plot_volume=True, save_fig=False, path=None):
         '''
         Plots a candlestick chart and the associated volume plot.
 
         Arguments:
-            Positional: None
-            Default:
+            Keyword:
                 plot_volume: (bool) Adds a plot of the trading volume beneath
                              the candlestick chart. Default = True.
                 save_fig:    (bool) Saves the plot.
@@ -159,65 +252,207 @@ class stock_data:
             fig.savefig(path + plot_name)
 
 
-    def plot_close(self, sma = False, window = None, save_fig = False, path = None):
+    def plot_close(self, window=None, win_boll=None, span=None, cm=None, hl=None, theta=None, weighted=False,
+               verbose=False, save_fig=False, path=None):
         '''
         Plots a candlestick chart and the associated volume plot.
         Arguments:
-            Positional: None
-              Default:
-                  sma:       (bool) Adds a plot of the SMA(s) provided in the 'window'
-                             default argument.
-                  window:    (int, list) The window size(s) for the SMA(s). Can be passed
-                             as either an int or a list of ints.
-                  save_fig:  (bool) Saves the plot.
-                  path:      (str) The absolute or relative path to save the
-                             file at.       
-        '''
+            Keyword:
+                window:    (int; float; list) The window size
+                           (lookback period) for the SMA.
+                win_boll:  (int) The window size for the Bollinger
+                           Band calculation.
+                span:      (int; float; list) The span (window size)
+                           for the E(W)MA.
+                cm:        (int; float; list) The center-or-mass for the
+                           E(W)MA.
+                hl:        (int; float; list) The half-life for the
+                           E(W)MA.
+                theta:     (int; float; list) The half-life for the
+                           E(W)MA.
+                weighted:  (bool) Perform the exponentially weighted moving
+                           average (EWMA).
+                verbose:   (bool) Increase verbosity.
+                save_fig:  (bool) Saves the plot.
+                path:      (str) The absolute or relative path to save the
+                           file at.       
+            '''
+        def _gen_col_palette(param_list):
+            return matplotlib.cm.hsv(np.linspace(0, 0.6, len(param_list)))      
+            
+        ## initialize booleans to false for plotting
+        sma = False
+        ema = False 
+
+        ## check ema arguments
+        params = [span, cm, hl, theta] # put params in list for checking
+        if params.count(None) < 3:
+            raise ValueError('Only one variable in [span, cm, hl, theta] can be chosen')
+
         ## check inputs
-        if sma:
-            if window is None: 
-                raise ValueError("Window must be specified as an int or list of ints for SMA calculation")
-            elif type(window) not in [int, list]:
-                raise TypeError("Window must be types int or list for SMA calculation")aise ValueError("Window must be specified as an int or list of ints for SMA calculation")
+        if window:
+            sma = True
+            leg_text_sma = '%d-day SMA'
+            if type(window) is list:
+                col_palette = _gen_col_palette(window)
+            else:
+                window     = [window]   
+                col_palete = ['crimson']
 
-        if type(window) is list:
-            window      = [int(win_size) for win_size in window]   # make sure all window sizes are ints
-            col_palette = cm.hsv(np.linspace(0, 0.6, len(window))) # initialize color palette with the hue, saturation,
-                                                                   # value (hsv) colormap
-        else:
-            window      = [int(window)] # make a size one list
-            col_palette = ['crimson']   # initialize default color for a single SMA 
+        if span:
+            ema = True
+            if weighted:
+                leg_text_ema = '%d-day EWMA'
+            else:
+                leg_text_ema = '%d-day EMA'
 
-        fig, ax = plt.subplots(figsize = (18, 10))
+            if type(span) is list:
+                col_palette = _gen_col_palette(span)
+            else:
+                span       = [span]   
+                col_palete = ['crimson']
+
+        if cm:
+            ema = True
+            if weighted:
+                leg_text_ema = r'$C_{m} = %.1f$ EWMA'
+            else:
+                leg_text_ema = r'$C_{m} = %.1f$ EMA'
+
+            if type(cm) is list:
+                col_palette = _gen_col_palette(cm)
+            else:
+                cm          = [cm]   
+                col_palete  = ['crimson']
+
+        if hl:
+            ema = True
+            if weighted:
+                leg_text_ema = r'$t_{1/2} = %.1f$ EWMA'
+            else:
+                leg_text_ema = r'$t_{1/2} = %.1f$ EMA'
+
+            if type(hl) is list:
+                col_palette = _gen_col_palette(hl)
+            else:
+                hl          = [hl]   
+                col_palete  = ['crimson']
+
+        if theta:
+            if theta <= 0 or theta > 1:
+                raise ValueError('The smoothing parameter (theta) must be 0 < theta <= 1')
+                
+            ema = True
+            if weighted:
+                leg_text_ema = r'$\theta = %.2f$ EWMA'
+            else:
+                leg_text_ema = r'$\theta = %.2f$ EMA'
+
+            if type(cm) is list:
+                col_palette = _gen_col_palette(theta)
+            else:
+                theta       = [theta]   
+                col_palete  = ['crimson']
+                
+        if win_boll:
+            color_scheme
+            band_color  = color_schemes['green']['band']
+            fill_color  = color_schemes['green']['fill']
+            band_legend = {10: 1.5, 20: 2, 50: 2.5}
+
+
+        fig, ax = plt.subplots(figsize=(18, 10))
         ax.grid()
         ax.set_title(self.ticker)
-        ax.set_xlabel("Date", loc = 'right')
-        ax.set_ylabel("Price (USD)", loc = 'top')
-        ax.plot(self.dates, self.close_p, color = "k", label = "Close price") # plot close price as a black line
-
+        ax.set_xlabel('Date', loc='right')
+        ax.set_ylabel('Price (USD)', loc='top')
+        ax.plot(self.dates, self.close_p, color='k', label='Close price')
+        
         if sma:
-            for win, color in zip(window, col_palette):     # loop over each window and color in color palette
-                sma_vals, sma_dates = self.calc_sma_np(win) # use the numpy method to calculate the SMA
-                ax.plot(sma_dates, sma_vals, color = color, label = "SMA (%i day)" % win)
+            for win, color in zip(window, col_palette):
+                sma_vals, sma_dates = self.calc_sma_np(win)
+                ax.plot(sma_dates, sma_vals, color=color, label=(leg_text_sma % win))
+
+        if ema: 
+            ema_dates = self.dates            
+            if span:
+                for val, color in zip(span, col_palette):
+                    ema_vals = self.calc_ema_np(window=val, weighted=weighted)
+                    ax.plot(ema_dates, ema_vals, color=color, label=(leg_text_ema % val))
+            
+            if cm:
+                for val, color in zip(cm, col_palette):
+                    ema_vals = self.calc_ema_np(cm=val, weighted=weighted)
+                    ax.plot(ema_dates, ema_vals, color=color, label=(leg_text_ema % val))
+
+            if hl:
+                for val, color in zip(hl, col_palette):
+                    ema_vals = self.calc_ema_np(hl=val, weighted=weighted)
+                    ax.plot(ema_dates, ema_vals, color=color, label=(leg_text_ema % val))
+
+            if theta:
+                for val, color in zip(theta, col_palette):
+                    ema_vals = self.calc_ema_np(theta=val, weighted=weighted)
+                    ax.plot(ema_dates, ema_vals, color=color, label=(leg_text_ema % val))
+                    
+        if win_boll:
+            for val, col in zip()
+                band_color = color_schemes[win_boll]['band']
+            sma_vals, upper_band, lower_band, sma_dates = self.calc_boll_np(win_boll)
+            ax.plot(sma_dates, lower_band, color=band_color, linestyle='--') # lower band
+            ax.plot(sma_dates, sma_vals,   color=band_color, label='SMA (%d-day)' % win_boll) # sma
+            ax.plot(sma_dates, upper_band, color=band_color, linestyle='-.')   # upper band
+            ax.fill_between(sma_dates, lower_band, upper_band, color=color_schemes[win_boll]['fill'], label='Bollinger Band ($\pm%.1f\sigma$)' % band_legend[win_boll], alpha=0.2, zorder=2)
 
         ax.legend()
         fig.tight_layout()
         plt.show()
 
         if save_fig:
-            if sma:
-                plot_name = "%s_close_price_sma_" % self.ticker
-                for win, cnt in zip(window, np.arange(len(window))):
-                    if cnt < (len(window) - 1):
-                        plot_name += "%d_" % win
-                    else:
-                        plot_name += "%d.pdf" % win
-            else:
-                plot_name = "%s_close_price.pdf" % self.ticker
-
             if path is not None:
                 path = format_path(path)
             else:
                 path = ''
+            
+            plot_name = '%s_close_price' % self.ticker # declare base name for plot
+            if win_boll:
+                plot_name += '_bollinger_%d' % win_boll
+                    
+            if sma or ema:
+                if sma:
+                    avg_type = '_sma_' 
+                    for win, cnt in zip(window, np.arange(len(window))):
+                        if cnt < (len(window) - 1):
+                            avg_type += '%d_' % win
+                        else:
+                            avg_type += '%d' % win
+                    plot_name += avg_type
+                
+                if ema:
+                    avg_type = '_ema_'
+                    if span:
+                        sp_ind_vars = span  # transfer the list of smoothing parameter independent values to general list
+                        avg_type += 'span_' # add 'span' to the plot name
+                    if cm:
+                        sp_ind_vars = cm
+                        avg_type += 'cm_'
+                    if hl:
+                        sp_ind_vars = hl
+                        avg_type += 'hl_'
+                    if theta:
+                        sp_ind_vars = theta
+                        avg_type += 'theta_'
+                    
+                    for val, cnt in zip(sp_ind_vars, np.arange(len(sp_ind_vars))):
+                        if cnt < (len(sp_ind_vars) - 1):
+                            avg_type += '%d_' % val
+                        else:
+                            avg_type += '%d.pdf' % val
+                            
+                    plot_name += avg_type
+                else: # if no ema, add file extension
+                    plot_name += '.pdf'
+            else: # if no ema or sma, add file extension to plot name
+                plot_name += '.pdf'
 
-            fig.savefig(path + plot_name)    
+            fig.savefig(path + plot_name)  
